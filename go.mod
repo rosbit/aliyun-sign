@@ -1,3 +1,3 @@
-module github/rosbit/aliyun-sign
+module github.com/rosbit/aliyun-sign
 
 go 1.13
