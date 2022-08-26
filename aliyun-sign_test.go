@@ -26,6 +26,28 @@ func Test_HamcSha1(t *testing.T) {
 	params.Set("TemplateCode", "SMS_71390007")
 	params.Set("OutId", "123")
 
-	signature := HmacSignToB64("HMAC-SHA1", "GET", accessSecret, params)
-	fmt.Printf("signature: %s\n", string(signature))
+	signature := HmacSignToB64("HMAC-SHA1", "GET", accessSecret, params, true)
+	fmt.Printf("signature: %s\n", signature)
+}
+
+func Test_Util(t *testing.T) {
+	accessKeyId := "testId"
+	accessSecret := "testSecret"
+
+	params := CreateParamsWithSignature(accessKeyId, accessSecret, "GET",
+		CommonParams{
+			Format: "XML",
+			Version: "2017-05-25",
+			SignatureMethod: "HMAC-SHA1",
+		}, map[string]string{
+			"Action": "SendSms",
+			"RegionId": "cn-hangzhou",
+			"PhoneNumbers": "15300000001",
+			"SignName": "阿里云短信测试专用",
+			"TemplateParam": "{\"customer\":\"test\"}",
+			"TemplateCode": "SMS_71390007",
+			"OutId": "123",
+		}, true,
+	)
+	fmt.Printf("params: %s\n", params)
 }

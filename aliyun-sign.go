@@ -1,15 +1,16 @@
 package aysign
 
 import (
-	"net/url"
-	"hash"
-	"io"
+	"encoding/base64"
+	"crypto/sha256"
 	"crypto/hmac"
 	"crypto/sha1"
-	"crypto/sha256"
 	"crypto/md5"
-	"encoding/base64"
+	"io"
+	"os"
 	"fmt"
+	"hash"
+	"net/url"
 )
 
 var (
@@ -20,7 +21,7 @@ var (
 	}
 )
 
-func HmacSign(signMethod string, httpMethod string, appKeySecret string, vals url.Values) (signature []byte) {
+func HmacSign(signMethod string, httpMethod string, appKeySecret string, vals url.Values, dumpingStrToSign ...bool) (signature []byte) {
 	key := []byte(appKeySecret+"&")
 
 	var h hash.Hash
@@ -29,20 +30,20 @@ func HmacSign(signMethod string, httpMethod string, appKeySecret string, vals ur
 	} else {
 		h = hmac.New(sha1.New, key)
 	}
-	makeDataToSign(h, httpMethod, vals)
+	makeDataToSign(h, httpMethod, vals, dumpingStrToSign...)
 	return h.Sum(nil)
 }
 
-func HmacSignToB64(signMethod string, httpMethod string, appKeySecret string, vals url.Values) (signature string) {
-	return base64.StdEncoding.EncodeToString(HmacSign(signMethod, httpMethod, appKeySecret, vals))
+func HmacSignToB64(signMethod string, httpMethod string, appKeySecret string, vals url.Values, dumpingStrToSign ...bool) (signature string) {
+	return base64.StdEncoding.EncodeToString(HmacSign(signMethod, httpMethod, appKeySecret, vals, dumpingStrToSign...))
 }
 
 type strToEnc struct {
-	s string
-	e bool
+	s string // string to encode
+	e bool   // encoding needed?
 }
 
-func makeDataToSign(w io.Writer, httpMethod string, vals url.Values) {
+func makeDataToSign(w io.Writer, httpMethod string, vals url.Values, dumpingStrToSign ...bool) {
 	in := make(chan *strToEnc)
 	go func() {
 		in <- &strToEnc{s:httpMethod}
@@ -53,14 +54,28 @@ func makeDataToSign(w io.Writer, httpMethod string, vals url.Values) {
 		close(in)
 	}()
 
-	specialUrlEncode(in, w)
+	if len(dumpingStrToSign) == 0 || !dumpingStrToSign[0] {
+		specialUrlEncode(in, w)
+	} else {
+		mw, deferFunc := dumpStrToSign(w)
+		defer deferFunc()
+		specialUrlEncode(in, mw)
+	}
 }
 
 var (
-	encTilde   = "%7E"          // '~' -> "%7E"
-	encBlank   = []byte("%20")  // ' ' -> "%20"
-	tilde      = []byte("~")
+	encTilde = fmt.Sprintf("%%%02X", '~') // "%7E"
+	tilde    = []byte("~")
 )
+
+func dumpStrToSign(w io.Writer) (mw io.Writer, deferFunc func()) {
+	fmt.Fprintf(os.Stderr, "----- strToSign begin -----\n")
+	deferFunc = func() {
+		fmt.Fprintf(os.Stderr, "\n----- strToSign end -----\n")
+	}
+	mw = io.MultiWriter(w, os.Stderr)
+	return
+}
 
 func specialUrlEncode(in <-chan *strToEnc, w io.Writer) {
 	for s := range in {
@@ -84,7 +99,7 @@ func specialUrlEncode(in <-chan *strToEnc, w io.Writer) {
 			case '*', '/', '&', '=':
 				fmt.Fprintf(w, "%%%02X", ch)
 			case '+':
-				w.Write(encBlank)
+				fmt.Fprintf(w, "%%%02X%02X", '%', ' ')  // '+' -> "%20" -> "%2520"
 			default:
 				fmt.Fprintf(w, "%c", ch)
 			}
